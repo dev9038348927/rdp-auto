@@ -10,42 +10,72 @@ jobs:
     steps:
       - name: Enable RDP
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
-          netsh advfirewall firewall add rule name="RDP" dir=in action=allow protocol=TCP localport=3389
+          try {
+            Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+            netsh advfirewall firewall add rule name="RDP" dir=in action=allow protocol=TCP localport=3389
+          } catch {
+            Write-Host "❌ Failed to enable RDP: $($_.Exception.Message)"
+            exit 1
+          }
 
       - name: Create User
         run: |
-          $username = "RDP2"
-          $password = "903834@dD"
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          New-LocalUser -Name $username -Password $securePass -AccountNeverExpires
-          Add-LocalGroupMember -Group Administrators -Member $username
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member $username
-          echo "RDP_USER=$username" >> $env:GITHUB_ENV
-          echo "RDP_PASSWORD=$password" >> $env:GITHUB_ENV
+          try {
+            $username = "RDP2"
+            $password = "903834@dD"
+            $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+            New-LocalUser -Name $username -Password $securePass -AccountNeverExpires
+            Add-LocalGroupMember -Group Administrators -Member $username
+            Add-LocalGroupMember -Group "Remote Desktop Users" -Member $username
+            echo "RDP_USER=$username" >> $env:GITHUB_ENV
+            echo "RDP_PASSWORD=$password" >> $env:GITHUB_ENV
+          } catch {
+            Write-Host "❌ Failed to create user: $($_.Exception.Message)"
+            exit 1
+          }
 
       - name: Install Python
         run: |
-          $pythonUrl = "https://www.python.org/ftp/python/3.13.7/python-3.13.7-amd64.exe"
-          $installer = "$env:TEMP\python-installer.exe"
-          Invoke-WebRequest -Uri $pythonUrl -OutFile $installer
-          Start-Process -FilePath $installer -ArgumentList "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0" -Wait
-          Remove-Item $installer -Force
-          python --version
+          try {
+            $pythonUrl = "https://www.python.org/ftp/python/3.13.7/python-3.13.7-amd64.exe"
+            $installer = "$env:TEMP\python-installer.exe"
+            Invoke-WebRequest -Uri $pythonUrl -OutFile $installer
+            Start-Process -FilePath $installer -ArgumentList "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0" -Wait
+            Remove-Item $installer -Force
+            python --version
+          } catch {
+            Write-Host "❌ Python install failed: $($_.Exception.Message)"
+          }
 
       - name: Install Tailscale
         run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
-          $installerPath = "$env:TEMP\tailscale.msi"
-          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
-          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
-          Remove-Item $installerPath -Force
+          try {
+            $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
+            $installerPath = "$env:TEMP\tailscale.msi"
+            Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
+            Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
+            Remove-Item $installerPath -Force
+          } catch {
+            Write-Host "❌ Tailscale install failed: $($_.Exception.Message)"
+            exit 1
+          }
 
       - name: Connect Tailscale
         run: |
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=tskey-auth-k9xRsi87Rf11CNTRL-MSyuZgc2F5DLbmd5LChj5DVAE374Yt5z --hostname=gh-runner-${ github.run_id }-rdp2
-          $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=tskey-auth-kTxykQMdoX11CNTRL-5b8A1QcfcxYt2R8Ubem7xYRy1hrGUMY9T --hostname=gh-runner-${ github.run_id }-rdp2
+          $tsIP = $null
+          $retries = 0
+          while (-not $tsIP -and $retries -lt 12) {
+            $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+            if (-not $tsIP) { Start-Sleep -Seconds 5 }
+            $retries++
+          }
+          if (-not $tsIP) {
+            Write-Host "❌ No Tailscale IP assigned!"
+            exit 1
+          }
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+          Write-Host "✅ Tailscale IP: $tsIP"
 
       - name: Show Credentials
         run: |
