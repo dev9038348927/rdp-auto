@@ -43,7 +43,7 @@ jobs:
 
       - name: Connect Tailscale
         run: |
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=tskey-auth-kJty5scZWC11CNTRL-78HgvBS1Co4k2D2c15xkn4GBGYSkyz42 --hostname=gh-runner-${ github.run_id }-rdp2
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=tskey-auth-k9xRsi87Rf11CNTRL-MSyuZgc2F5DLbmd5LChj5DVAE374Yt5z --hostname=gh-runner-${ github.run_id }-rdp2
           $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
 
