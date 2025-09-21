@@ -1,0 +1,56 @@
+
+name: RDP1
+on:
+  workflow_dispatch:
+
+jobs:
+  rdp:
+    runs-on: windows-latest
+    timeout-minutes: 360
+    steps:
+      - name: Enable RDP
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          netsh advfirewall firewall add rule name="RDP" dir=in action=allow protocol=TCP localport=3389
+
+      - name: Create User
+        run: |
+          $username = "RDP1"
+          $password = "903834@dD"
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          New-LocalUser -Name $username -Password $securePass -AccountNeverExpires
+          Add-LocalGroupMember -Group Administrators -Member $username
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member $username
+          echo "RDP_USER=$username" >> $env:GITHUB_ENV
+          echo "RDP_PASSWORD=$password" >> $env:GITHUB_ENV
+
+      - name: Install Python
+        run: |
+          $pythonUrl = "https://www.python.org/ftp/python/3.13.7/python-3.13.7-amd64.exe"
+          $installer = "$env:TEMP\python-installer.exe"
+          Invoke-WebRequest -Uri $pythonUrl -OutFile $installer
+          Start-Process -FilePath $installer -ArgumentList "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0" -Wait
+          Remove-Item $installer -Force
+          python --version
+
+      - name: Install Tailscale
+        run: |
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
+          $installerPath = "$env:TEMP\tailscale.msi"
+          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
+          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
+          Remove-Item $installerPath -Force
+
+      - name: Connect Tailscale
+        run: |
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=tskey-auth-kqZKRzhkN111CNTRL-8gfLaVZZPzfB4c39cz9yyfZ1u3zF5ULbb --hostname=gh-runner-${ github.run_id }-rdp1
+          $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+
+      - name: Show Credentials
+        run: |
+          Write-Host "=== RDP1 ACCESS ==="
+          Write-Host "Address: $env:TAILSCALE_IP"
+          Write-Host "Username: $env:RDP_USER"
+          Write-Host "Password: $env:RDP_PASSWORD"
+          Write-Host "=================="
